@@ -220,11 +220,12 @@ top_assign %>%
   geom_histogram()
 
 ```
+
 Everything looks like a haddock. No issues with z-scores and including just the 44 markers for which there's no missing data across Cod, Haddock, and putative coddock.
 
 
 
-Quick check:
+### Quick check that we can detect cod properly
 
 
 ```{r switch-a-cpl-cod-to-unknown}
@@ -281,15 +282,121 @@ top_assign %>%
   geom_histogram()
 
 ```
+
 Perfect. Now I can see the real cod samples that I switched to unknowns and none additional. That makes me feel confident in the power of the genetic markers and the mixture analysis.
 
 
 
+## Run PCA to evaluate reference samples
+
+```{r}
+library(adegenet)
+
+geno <- two_col
+
+# Assuming first column contains sample IDs
+sample_ids <- geno[[2]]
+
+geno1 <- geno %>%
+  select(-species, -Sample_ID)
+
+# Extract genotype column names
+cn <- names(geno1)[-1]
+
+# Remove final .1 or .2 to identify locus names
+locus_names <- sub("\\.[12]$", "", cn)
+
+# Identify unique loci
+loci <- unique(locus_names)
+
+# Combine alleles for each locus
+geno_combined <- as.data.frame(
+  lapply(loci, function(loc) {
+
+    a1 <- geno1[[paste0(loc, ".1")]]
+    a2 <- geno1[[paste0(loc, ".2")]]
+
+    ifelse(
+      is.na(a1) | is.na(a2),
+      NA,
+      paste(a1, a2, sep = "/")
+    )
+  })
+)
+
+names(geno_combined) <- loci
+rownames(geno_combined) <- sample_ids
+```
 
 
+```{r}
+# Replace periods with underscores
+names(geno_combined) <- gsub("\\.", "_", names(geno_combined))
+
+genind_obj <- df2genind(
+  geno_combined,
+  ploidy = 2,
+  sep = "/",
+  ind.names = sample_ids,
+  NA.char = "NA",
+  type = "codom"
+)
+```
 
 
+```{r}
+pca <- dudi.pca(
+  tab(genind_obj, NA.method = "mean"),
+  scannf = FALSE,
+  nf = 10
+)
+```
 
+
+```{r}
+# Create dataframe with PCA scores
+pca_df <- data.frame(
+  PC1 = pca$li[, 1],
+  PC2 = pca$li[, 2],
+  Sample_ID = rownames(pca$li)
+)
+
+# Calculate variance explained
+variance <- pca$eig / sum(pca$eig) * 100
+
+```
+
+```{r}
+# Create sample-to-species lookup
+species_info <- geno %>%
+  select(Sample_ID, species) %>%
+  distinct()
+
+# Add species to PCA dataframe
+pca_df <- pca_df %>%
+  left_join(species_info, by = c("Sample_ID" = "Sample_ID"))
+```
+
+
+```{r plot-PCA}
+ggplot(pca_df, aes(x = PC1, y = PC2, color = species)) +
+  geom_point(size = 3, alpha = 0.7) +
+  labs(
+    x = paste0("PC1 (", round(variance[1], 2), "%)"),
+    y = paste0("PC2 (", round(variance[2], 2), "%)"),
+    color = "Species",
+    title = "Atlantic cod, haddock, and putative coddock samples"
+  ) +
+  theme_classic() +
+  theme(
+    axis.title = element_text(size = 13),
+    axis.text = element_text(size = 11),
+    plot.title = element_text(size = 14, face = "bold"),
+    legend.position = "right"
+  )
+```
+
+Pretty conclusive. The coddock do not appear intermediate. And, in fact, there's very little diversity at these 44 loci in the haddock/coddock samples.
 
 
 
