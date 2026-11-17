@@ -5,25 +5,39 @@ diana baetscher
 
 Background: “Coddock,” a putative hybrid between Atlantic cod and
 haddock, were collected by fishermen and given to the Northeast
-Fisheries Science Center.
+Fisheries Science Center for analysis.
 
 The ABL Genetics Program received the putative hybrid samples as well as
 reference samples for both Atlantic cod and haddock and genotyped all
 samples using a set of microhaplotype markers designed in Pacific cod
 (but using the Atlantic cod reference genome).
 
-Illumina MiSeq data generated on 10-30-2026.
+Data were generated on the ABL Illumina MiSeq instrument on 10-30-2026
+and then processed on the NOAA ’Omics high-performance computing
+cluster, Sedna.
 
-Data processed on the NOAA ’Omics high-performance computing cluster,
-Sedna. Walkthrough of species id for unknown samples:
+Because cod and haddock are quite diverged, many of the genetic markers
+did not amplify successfully in the haddock and ‘coddock’ samples.
+Rather than dealing with patterns of missing data, I subset the number
+of genetic markers down to just those that did consistently amplify
+across all three groups (total of 44).
 
-Using the rds file output from microhaplot:
+Allele frequencies for the 44 retained markers were analyzed using
+‘rubias’ for genetic stock identification with the “pure” cod and
+haddock as reference populations. This analysis suggested that all
+coddock are actually haddock, with no samples assigned to cod. The
+z-scores (standard deviations) were all within a normal range,
+indicating that haddock was a confident assignment.
 
-1.  read in rds files
+To confirm the genetic identity of the reference cod and haddock
+samples, I used principal components analysis. The result of the PCA
+showed all haddock clustering separately from all cod samples with the
+coddock clustering with the haddock. If the coddock were hybrids, they
+should have appeared intermediate between the cod and haddock clusters.
 
-2.  apply read depth filters
-
-3.  apply allele balance filter
+Both analyses support the result that coddock are actually haddock, with
+no evident hybridization with cod based on the genetic markers used
+here.
 
 ``` r
 # remotes::install_github("eriqande/rubias")
@@ -81,19 +95,6 @@ genos_long_explicit_NAs <- genos_long %>%
     ## Joining with `by = join_by(id, locus, gene_copy)`
 
 ``` r
-genos_long_explicit_NAs %>%
-  ggplot(aes(x = locus, y = id, fill = depth)) +
-  geom_tile()
-```
-
-![](01-coddock-analysis_files/figure-gfm/overall-pattern-of-missing-data-1.png)<!-- -->
-
-Lots of missing data, but that’s not surprising because of the mismatch
-between species.
-
-So let’s ignore the missing data for now.
-
-``` r
 # ABLG metadata
 meta <- read_xlsx("../data/20261015_Coddock.xlsx")
 
@@ -125,8 +126,6 @@ df_w_spp <- genos_long_explicit_NAs %>%
 
     ## Joining with `by = join_by(row_id)`
 
-Oh man, do we have data that links to the ABLG numbers?
-
 Were there loci that dropped in all samples?
 
 ``` r
@@ -141,10 +140,10 @@ df_w_spp %>%
   )
 ```
 
-![](01-coddock-analysis_files/figure-gfm/unnamed-chunk-1-1.png)<!-- -->
-I wonder if there’s some utility in just using the loci without missing
-data. Even though there’s a ton of information in the patterns of
-missing data…
+![](01-coddock-analysis_files/figure-gfm/patterns-of-missing-data-by-species-1.png)<!-- -->
+
+Let’s use just the loci without missing data. Even though there could be
+information in the patterns of missing data…
 
 Goal: filter just to the smaller number of markers with no missing data
 across all three groups.
@@ -175,7 +174,8 @@ df_locs %>%
   )
 ```
 
-![](01-coddock-analysis_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
+![](01-coddock-analysis_files/figure-gfm/pattern-for-loci-retained-1.png)<!-- -->
+
 44 loci without missing data across all three groups.
 
 ``` r
@@ -205,9 +205,8 @@ reference <- two_col %>%
   rename(repunit = species) %>%
   mutate(collection = repunit) %>%
   select(sample_type, repunit, collection, indiv, everything())
-```
 
-``` r
+
 # mixture
 rubias_mix <- two_col %>%
   filter(species == "Coddock") %>%
@@ -242,6 +241,10 @@ rubias_output$mixing_proportions %>%
 
 ![](01-coddock-analysis_files/figure-gfm/run-rubias-1.png)<!-- -->
 
+This plot of mixture proportions makes it look like there is at least
+one sample with cod, but that is not the case if we look at the
+individual sample assignments rather than mixture proportions.
+
 ``` r
 # take the top output for each sample
 top_assign <- rubias_output$indiv_posteriors %>%
@@ -269,9 +272,10 @@ top_assign
     ## # ℹ 3 more variables: n_non_miss_loci <int>, n_miss_loci <int>,
     ## #   missing_loci <list>
 
-I think the only additional thing I could think of is blinding a handful
-of the known cod samples and seeing if they’re correctly assigned to
-cod.
+All of those samples assign as haddock.
+
+Make sure there aren’t any non-cod and non-haddock in the mixture that
+would show up in large z-scores.
 
 ``` r
 # check z-scores
@@ -287,6 +291,10 @@ top_assign %>%
 Everything looks like a haddock. No issues with z-scores and including
 just the 44 markers for which there’s no missing data across Cod,
 Haddock, and putative coddock.
+
+I think the only additional thing I could think of is blinding a handful
+of the known cod samples and seeing if they’re correctly assigned to
+cod.
 
 ### Quick check that we can detect cod properly
 
@@ -313,8 +321,6 @@ rubias_mix <- test2 %>%
   rename(indiv = Sample_ID) %>%
   select(-species)
 ```
-
-## Mixture assignment with rubias
 
 ``` r
 rubias_output <- infer_mixture(reference = reference, mixture = rubias_mix, gen_start_col = 5)
@@ -353,7 +359,7 @@ top_assign %>%
 
     ## `stat_bin()` using `bins = 30`. Pick better value `binwidth`.
 
-![](01-coddock-analysis_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
+![](01-coddock-analysis_files/figure-gfm/unnamed-chunk-1-1.png)<!-- -->
 
 Perfect. Now I can see the real cod samples that I switched to unknowns
 and none additional. That makes me feel confident in the power of the
